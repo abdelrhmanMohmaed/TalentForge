@@ -1,0 +1,21 @@
+use it: pipenv shell to open enviroment
+
+
+pip install pipenv
+pipenv install
+pipenv shell
+
+- postgresql
+pipenv install psycopg2-binary
+
+-settings.py
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'mento_hub',
+        'USER': 'postgres',
+        'PASSWORD': 'admin1234',
+        'HOST': 'localhost',
+        'PORT': '',
+    }
+}
