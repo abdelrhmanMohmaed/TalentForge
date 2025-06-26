@@ -1,0 +1,122 @@
+# users/serializers.py
+from rest_framework import serializers
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from djoser.serializers import UserCreateSerializer as DjoserUserCreateSerializer, UserSerializer as DjoserUserSerializer
+from .models import User, Role, Project, UserRoleProject # تأكد من استيراد النماذج
+
+# Serializer جديد لبيانات المدخلات لربط الدور والمشروع
+class UserRoleProjectAssignmentSerializer(serializers.Serializer):
+    # يستخدم PrimaryKeyRelatedField لجلب الكائن بناءً على الـ ID
+    # 'source' يحدد اسم الحقل في 'validated_data' بعد المعالجة
+    role_id = serializers.PrimaryKeyRelatedField(
+        queryset=Role.objects.all(),
+        source='role'
+    )
+    project_id = serializers.PrimaryKeyRelatedField(
+        queryset=Project.objects.all(),
+        required=False, # جعل project_id اختياري عند الإدخال
+        allow_null=True, # السماح بـ None كقيمة
+        source='project'
+    )
+
+# Custom User Creation Serializer (for Djoser registration)
+class UserCreateSerializer(DjoserUserCreateSerializer):
+    # إضافة EED مرة أخرى وتأكيد أنه UUIDField
+    EED = serializers.UUIDField(format='hex_verbose', required=True)
+    
+    # الحقل الجديد لقائمة الأدوار والمشاريع المتداخلة
+    # يستخدم UserRoleProjectAssignmentSerializer الجديد كـ nested serializer
+    # many=True لأنه سيستقبل قائمة من العلاقات
+    # write_only=True لأنه يستخدم فقط للإدخال وليس للعرض
+    # required=False لأنه يمكن إنشاء المستخدم بدون تعيين أدوار/مشاريع فوراً
+    role_projects = UserRoleProjectAssignmentSerializer(many=True, write_only=True, required=False)
+
+    class Meta(DjoserUserCreateSerializer.Meta):
+        model = User
+        fields = (
+            'id', 
+            'email', 
+            'EED',       # تأكد من وجود EED هنا
+            'password', 
+            'name', 
+            'department', 
+            'job_title', 
+            'location',
+            'role_projects' # إضافة الحقل المتداخل هنا
+        )
+        read_only_fields = ('id',)
+
+    def create(self, validated_data):
+        # استخراج بيانات الأدوار والمشاريع قبل إنشاء المستخدم
+        # pop() يقوم بإزالة 'role_projects' من validated_data قبل تمريرها لـ super().create()
+        role_projects_data = validated_data.pop('role_projects', [])
+
+        # إنشاء المستخدم باستخدام الـ Serializer الأساسي لـ Djoser
+        user = super().create(validated_data)
+
+        # ربط المستخدم بالأدوار والمشاريع باستخدام UserRoleProject
+        # item هنا سيحتوي على كائنات Role و Project (أو None للمشروع)
+        for item in role_projects_data:
+            UserRoleProject.objects.create(
+                user=user, 
+                role=item['role'],    # كائن Role
+                project=item['project'] # كائن Project أو None
+            )
+        return user
+
+# Custom User Serializer (for retrieving user details)
+class UserSerializer(DjoserUserSerializer):
+    class Meta(DjoserUserSerializer.Meta):
+        model = User
+        fields = ('id', 'email', 'EED', 'name', 'department', 'job_title', 'location', 'is_active', 'is_staff', 'is_superuser', 'date_joined') # تم تغيير created_at/updated_at إلى date_joined إذا كانت هذه الحقول في النموذج الخاص بك
+        read_only_fields = ('id', 'email', 'EED', 'is_active', 'is_staff', 'is_superuser', 'date_joined')
+
+# Serializer for Role (للعرض)
+class RoleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Role
+        fields = '__all__'
+
+# Serializer for Project (simple placeholder, للعرض)
+class ProjectSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Project
+        fields = '__all__'
+
+# Serializer for UserRoleProject (pivot table, للعرض)
+class UserRoleProjectSerializer(serializers.ModelSerializer):
+    user_email = serializers.ReadOnlyField(source='user.email')
+    role_name = serializers.ReadOnlyField(source='role.name')
+    project_name = serializers.ReadOnlyField(source='project.name', allow_null=True) # Allow null if project is null
+
+    class Meta:
+        model = UserRoleProject
+        fields = ('id', 'user', 'user_email', 'role', 'role_name', 'project', 'project_name') # تم إزالة created_at إذا لم يكن موجوداً
+        # read_only_fields = ('created_at',) # إذا كان موجوداً، فاحتفظ به
+
+# Custom Token Serializer to include user data
+class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    @classmethod
+    def get_token(cls, user):
+        token = super().get_token(user)
+
+        # Add custom claims
+        token['email'] = user.email
+        token['EED'] = str(user.EED) # تأكد من تحويل UUID إلى string
+        token['name'] = user.name
+        token['department'] = user.department
+
+        # Get user roles (للعرض في التوكن)
+        user_roles_queryset = user.userroleproject_set.select_related('role').all()
+        roles_list = [ur.role.name for ur in user_roles_queryset]
+        token['roles'] = roles_list
+
+        return token
+
+    def validate(self, attrs):
+        data = super().validate(attrs)
+        user_serializer = UserSerializer(self.user)
+        data['user'] = user_serializer.data
+        data['token'] = data.pop('access')
+        data.pop('refresh', None)
+        return data
