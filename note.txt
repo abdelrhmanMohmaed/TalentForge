@@ -1,21 +1,47 @@
-use it: pipenv shell to open enviroment
+- Terminal Commit
+    - To install the pipenv
+        - pip install pipenv
+    - To install the packges in pipenv
+        - pipenv install
+    - To install the postgresql
+        - pipenv install psycopg2-binary
+    - Use this commit to be able to assess the environment
+        - pipenv shell
+    - TO open the server use pipenv
+        - pipenv run python manage.py runserver
+    - To check the current enviroment 
+        - pipenv --venv
+    - If need to use terminal to insert anything in DB use this structure:
+        - pipenv run python manage.py shell
+        
+            from users.models import Role
+            admin_role, created = Role.objects.get_or_create(name='admin', defaults={'description': 'Administrator role'})
+            print(f"Admin Role ID: {admin_role.id}")
+            exit()
 
+- GitHub Branches
+    - feature/auth-custom-user
+        * Success
+            - pipenv run python manage.py startapp users => create new App (users)
+            - include app name in setting file INSTALLED_APPS = ["users"] 
+            - Insulation of new models:
+                1- roles
+                2- custom user
+                3- user project
+            Use cd app/models and add the model fields with attributes and CustomUserManager to be able to manage user model.
+            - Add new model access(AUTH_USER_MODEL = 'users.User') after INSTALLED_APPS in setting file to be able to access the new user model.
+            - pipenv run python manage.py migrate / if migrate before use .. pipenv run python manage.py make migrations users and .. pipenv run python manage.py migrate
+            - create new user: pipenv run python manage.py createsuperuser
+                - admin@admin.custom
+                - 5495120
+                - Abd@1234
+            - download JWT and Djoser (pipenv install djangorestframework djoser djangorestframework-simplejwt).
+            - Add a credential to reset password, djoser and rest_framework_simplejwt  in setting file INSTALLED_APPS = ["rest_framework", "djoser", "rest_framework_simplejwt"].
+            - Add DJOSER configurations.
+            - Create new file in users app(serializers.py) and add the model fields need to show it in responce.
+            - Create class and funstions to create and fetch roles and projects. 
+        * Failed 
+            - reset password and refresh token.
+            - Faild and i will take new branch and do it Insallah: Create new folder to collect the folder models funs path: (users/serializers) find the roles,projects files and __init__.py.
+                * import this files in the orginal file (users/serializers.py file).
 
-pip install pipenv
-pipenv install
-pipenv shell
-
-- postgresql
-pipenv install psycopg2-binary
-
--settings.py
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'mento_hub',
-        'USER': 'postgres',
-        'PASSWORD': 'admin1234',
-        'HOST': 'localhost',
-        'PORT': '',
-    }
-}
